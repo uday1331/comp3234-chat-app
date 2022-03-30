@@ -1,9 +1,9 @@
 #!/usr/bin/python3
 
-# Student name and No.:
-# Development platform:
-# Python version:
-# Version:
+# Student name and No.: Uday Jain, 3035552765
+# Development platform: OSX
+# Python version: 3.7.13
+# Version: 1.0
 
 
 from tkinter import *
@@ -30,8 +30,22 @@ SERVER_PORT = None
 #
 
 def do_Join():
-  #The following statement is just for demo purpose
-  #Remove it when you implement the function
+  sockfd = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+  sockfd.connect( (SERVER, SERVER_PORT) )
+
+  join_msg = f'{{"CMD": "JOIN", "UN": "{NICKNAME}", "UID": "{USERID}"}}'.encode('utf-8')
+  sockfd.sendall(join_msg)
+
+  rmsg = sockfd.recv(1024)
+  res = json.loads(rmsg)
+  cmd_type = res["TYPE"]
+
+  if (cmd_type == "OKAY"):
+    rmsg = sockfd.recv(1024)
+    
+    client_list = json.loads(rmsg)
+    list_print(str(client_list))
+
   console_print("Press do_Join()")
 
 def do_Send():

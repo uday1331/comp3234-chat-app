@@ -1,88 +1,112 @@
 #!/usr/bin/python
 
+from audioop import rms
+from http import server
+from pydoc import plain
 import socket
+import string
 import sys
 import select
+import json
+
+
+class ChatServer:
+	def __init__(self, port):
+		self.CList = []
+		self.RList = []
+		self.port = port
+
+		self.PList = {}
+		self.sockfd = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+
+	def _jsonify_plist(self):
+		plist = {}
+		for key in self.PList.keys():
+			plist[key] = self.PList[key][0]
+		return json.dumps(plist)
+
+	def __do_JOIN(self, p_uid, p_un, psoc: socket.socket):
+		if p_uid in self.PList.keys():
+			psoc.sendall('{"CMD": "ACK", "TYPE": "FAIL"}'.encode('utf-8'))
+		else:
+			self.PList[p_uid] = (p_un, psoc)
+
+			psoc.sendall('{"CMD": "ACK", "TYPE": "OKAY"}'.encode('utf-8'))
+
+			for _, p in self.PList.values():
+				if(p != self.sockfd):
+					plist = self._jsonify_plist()
+					p.sendall(plist.encode('utf-8'))
+
+
+	def __handle_rmsg(self, rmsg: string, psoc: socket.socket):
+		msg = json.loads(rmsg)
+		
+		cmd = msg["CMD"]
+
+		if cmd == "JOIN":
+			p_uid = msg["UID"]
+			p_un = msg["UN"]
+
+			self.__do_JOIN(p_uid, p_un, psoc)
+
+	
+	def start(self):
+		try:
+			self.sockfd.bind(('', self.port))
+		except socket.error as emsg:
+			print("Socket bind error: ", emsg)
+			sys.exit(1)
+		
+		self.sockfd.listen(5)
+		self.RList = [self.sockfd]
+
+	def listen(self):
+
+		while True:
+			try:
+				Rready, _, __ = select.select(self.RList, [], [], 10)
+			except select.error as emsg:
+				print("At select, caught an exception:", emsg)
+				sys.exit(1)
+			except KeyboardInterrupt:
+				print("At select, caught the KeyboardInterrupt")
+				sys.exit(1)
+
+			if Rready:
+				for sd in Rready:
+					if sd == self.sockfd:
+						newfd, caddr = self.sockfd.accept()
+						print("A new client has arrived. It is at:", caddr)
+						self.RList.append(newfd)
+						self.CList.append(newfd)
+					else:
+						rmsg = sd.recv(1024)
+
+						if rmsg:
+							self.__handle_rmsg(rmsg, sd)
+
+						else:
+							print("A client connection is broken!!")
+							
+							self.CList.remove(sd)
+							self.RList.remove(sd)
+
+			else:
+				print("Idling")
+
+
 
 def main(argv):
-	# set port number
-	# default is 32342 if no input argument
 	if len(argv) == 2:
 		port = int(argv[1])
 	else:
-		port = 32342
-
-	# create socket and bind
-	sockfd = socket.socket()
-	try:
-		sockfd.bind(('', port))
-	except socket.error as emsg:
-		print("Socket bind error: ", emsg)
-		sys.exit(1)
-
-	# set socket listening queue
-	sockfd.listen(5)
-
-	# add the listening socket to the READ socket list
-	RList = [sockfd]
-
-	# create an empty WRITE socket list
-	CList = []
-
-	# start the main loop
-	while True:
-		# use select to wait for any incoming connection requests or
-		# incoming messages or 10 seconds
-		try:
-			Rready, Wready, Eready = select.select(RList, [], [], 10)
-		except select.error as emsg:
-			print("At select, caught an exception:", emsg)
-			sys.exit(1)
-		except KeyboardInterrupt:
-			print("At select, caught the KeyboardInterrupt")
-			sys.exit(1)
-
-		# if has incoming activities
-		if Rready:
-			# for each socket in the READ ready list
-			for sd in Rready:
-
-				# if the listening socket is ready
-				# that means a new connection request
-				# accept that new connection request
-				# add the new client connection to READ socket list
-				# add the new client connection to WRITE socket list
-				if sd == sockfd:
-					newfd, caddr = sockfd.accept()
-					print("A new client has arrived. It is at:", caddr)
-					RList.append(newfd)
-					CList.append(newfd)
-
-				# else is a client socket being ready
-				# that means a message is waiting or 
-				# a connection is broken
-				# if a new message arrived, send to everybody
-				# except the sender
-				# if broken connection, remove that socket from READ 
-				# and WRITE lists
-				else:
-					rmsg = sd.recv(500)
-					if rmsg:
-						print("Got a message!!")
-						if len(CList) > 1:
-							print("Relay it to others.")
-							for p in CList:
-								if p != sd:
-									p.send(rmsg)
-					else:
-						print("A client connection is broken!!")
-						CList.remove(sd)
-						RList.remove(sd)
-
-		# else did not have activity for 10 seconds, 
-		# just print out "Idling"
-		else:
-			print("Idling")
+		port = 32349
+	
+	server = ChatServer(port)
+	
+	server.start()
+	server.listen()
 
 
 if __name__ == '__main__':
