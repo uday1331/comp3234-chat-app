@@ -6,6 +6,7 @@
 # Version: 1.0
 
 
+import string
 from tkinter import *
 from tkinter import ttk
 from tkinter import font
@@ -13,6 +14,9 @@ import sys
 import socket
 import json
 import os
+from xmlrpc.client import Server
+import threading
+from _thread import start_new_thread
 
 #
 # Global variables
@@ -29,32 +33,98 @@ SERVER_PORT = None
 # Functions to handle user input
 #
 
+sockfd = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+peer_list = []
+
+def search_plist(field, value):
+  for p in peer_list:
+    if(p[field] == value):
+      return p
+  
+  return KeyError
+
+def uid_from_un(un):
+  p = search_plist("UN", un)
+  return p["UID"]
+
+def stringify_plist():
+  s_plist = map(lambda p: f'{p["UN"]} ({p["UID"]})', peer_list)
+  return ", ".join(s_plist)
+
+def handle_rmsg(rmsg: string):
+  global peer_list
+  msg = json.loads(rmsg)
+
+  if(msg["CMD"] == "LIST"):
+    peer_list = msg["DATA"]
+    list_print(stringify_plist())
+
+  elif(msg["CMD"] == "MSG"):
+    msg_from = search_plist("UID", msg["FROM"])
+    msg_from_un = msg_from["UN"]
+    msg_type = msg["TYPE"]
+
+    print_msg = f'[{msg_from_un}] {msg["MSG"]}'
+    if(msg_type == "PRIVATE"):
+      chat_print(print_msg, 'redmsg')  
+    elif(msg_type == "GROUP"):
+      chat_print(print_msg, 'greenmsg')
+    elif(msg_type == "ALL"):
+      chat_print(print_msg, 'bluemsg')
+
+
+def recv_cmd(sockfd: socket.socket):
+  while True:
+    rmsg = sockfd.recv(1024)
+    if not rmsg:
+      console(f'none response from server. successfully disconnected')
+      break
+    handle_rmsg(rmsg)
+  sockfd.close()
+
 def do_Join():
-  sockfd = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
   sockfd.connect( (SERVER, SERVER_PORT) )
 
-  join_msg = f'{{"CMD": "JOIN", "UN": "{NICKNAME}", "UID": "{USERID}"}}'.encode('utf-8')
-  sockfd.sendall(join_msg)
+  cmd = {
+    "CMD": "JOIN", 
+    "UN": NICKNAME,
+    "UID": USERID
+  }
+  data = json.dumps(cmd).encode('utf-8')
+  sockfd.sendall(data)
 
   rmsg = sockfd.recv(1024)
-  res = json.loads(rmsg)
-  cmd_type = res["TYPE"]
+  msg = json.loads(rmsg)
 
-  if (cmd_type == "OKAY"):
-    rmsg = sockfd.recv(1024)
-    
-    client_list = json.loads(rmsg)
-    list_print(str(client_list))
+  if(msg["CMD"] == "ACK" and msg["TYPE"] == "OKAY"):
+    console_print(f'successfully connected to server at: ({Server}:{SERVER_PORT})')
+    start_new_thread(recv_cmd, (sockfd, ))
+  else:
+    console_print(f'[ ERROR ]: failed connected to server at: ({Server}:{SERVER_PORT})')
+    sockfd.close()
 
-  console_print("Press do_Join()")
 
 def do_Send():
   #The following statements are just for demo purpose
   #Remove them when you implement the function
-  chat_print("Press do_Send()")
-  chat_print("Receive private message", "redmsg")
-  chat_print("Receive group message", "greenmsg")
-  chat_print("Receive broadcast message", "bluemsg")
+
+  msg_to = get_tolist()
+  msg_to_un = [] if len(msg_to) == 0 else msg_to.split(", ")
+  msg_to_uid = list(map(uid_from_un, msg_to_un))
+  msg_msg = get_sendmsg()
+
+  cmd = {
+    "CMD": "SEND", 
+    "MSG": msg_msg.strip(),
+    "TO": msg_to_uid,
+    "FROM": USERID
+  }
+  data = json.dumps(cmd).encode('utf-8')
+  sockfd.sendall(data)
+
+
+
+  ## TODO: convert nicknames to uid
 
 def do_Leave():
   #The following statement is just for demo purpose

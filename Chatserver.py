@@ -1,8 +1,10 @@
 #!/usr/bin/python
 
 from audioop import rms
+from encodings import utf_8
 from http import server
 from pydoc import plain
+import re
 import socket
 import string
 import sys
@@ -19,13 +21,18 @@ class ChatServer:
 		self.PList = {}
 		self.sockfd = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 
-	def _jsonify_plist(self):
-		plist = {}
-		for key in self.PList.keys():
-			plist[key] = self.PList[key][0]
-		return json.dumps(plist)
+	def _peer_list(self):
+		plist = []
 
-	def __do_JOIN(self, p_uid, p_un, psoc: socket.socket):
+		for key in self.PList.keys():
+			plist.append({"UID": key, "UN": self.PList[key][0]})
+
+		return plist
+
+	def __do_JOIN(self, msg, psoc):
+		p_uid = msg["UID"]
+		p_un = msg["UN"]
+
 		if p_uid in self.PList.keys():
 			psoc.sendall('{"CMD": "ACK", "TYPE": "FAIL"}'.encode('utf-8'))
 		else:
@@ -33,10 +40,44 @@ class ChatServer:
 
 			psoc.sendall('{"CMD": "ACK", "TYPE": "OKAY"}'.encode('utf-8'))
 
+
+			list_data = {
+				"CMD": "LIST", 
+				"DATA": self._peer_list()
+			}
+			res = json.dumps(list_data).encode('utf-8')
+			
 			for _, p in self.PList.values():
 				if(p != self.sockfd):
-					plist = self._jsonify_plist()
-					p.sendall(plist.encode('utf-8'))
+					p.sendall(res)
+
+	def __do_SEND(self, msg, psoc):
+		msg_to =  msg["TO"]
+
+		if(len(msg_to) == 0):
+			msg_data = {
+				"CMD": "MSG", 
+				"TYPE": "ALL",
+				"MSG": msg["MSG"],
+				"FROM": msg["FROM"]
+			}
+			res = json.dumps(msg_data).encode('utf-8')
+
+			for _, p in self.PList.values():
+				if(p != self.sockfd and p != psoc):
+					p.sendall(res)
+		else:
+			msg_data = {
+				"CMD": "MSG", 
+				"TYPE": "PRIVATE" if len(msg_to) == 1 else "GROUP",
+				"MSG": msg["MSG"],
+				"FROM": msg["FROM"]
+			}
+			res = json.dumps(msg_data).encode('utf-8')
+
+			for p_uid in msg_to:
+				p = self.PList[p_uid][1]
+				p.sendall(res)
 
 
 	def __handle_rmsg(self, rmsg: string, psoc: socket.socket):
@@ -45,10 +86,13 @@ class ChatServer:
 		cmd = msg["CMD"]
 
 		if cmd == "JOIN":
-			p_uid = msg["UID"]
-			p_un = msg["UN"]
+			self.__do_JOIN(msg, psoc)
 
-			self.__do_JOIN(p_uid, p_un, psoc)
+		elif cmd == "SEND":
+			self.__do_SEND(msg, psoc)
+		
+		else:
+			print("[ERROR] CMD not recognized")
 
 	
 	def start(self):
