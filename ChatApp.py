@@ -42,10 +42,14 @@ def search_plist(field, value):
     if(p[field] == value):
       return p
   
-  return KeyError
+  raise KeyError
 
 def uid_from_un(un):
-  p = search_plist("UN", un)
+  try:
+    p = search_plist("UN", un)
+  except:
+    return None
+    
   return p["UID"]
 
 def stringify_plist():
@@ -60,9 +64,9 @@ def handle_rmsg(msg: string):
   if(msg_cmd == "ACK"):
     msg_type = msg["TYPE"]
     if(msg_type == "OKAY"):
-      console_print(f'[SUCCESS] Successfully connected to server at: ({SERVER}:{SERVER_PORT})')
+      console_print(f'[SUCCESS] Successfully connected to server at: ({SERVER}:{SERVER_PORT}).')
     else:
-      console_print(f'[ERROR]: Failed connected to server at: ({SERVER}:{SERVER_PORT}). You might be already connected!')
+      console_print(f'[ERROR]: Failed connecting to server at: ({SERVER}:{SERVER_PORT}).')
   elif(msg_cmd == "LIST"):
     peer_list = msg["DATA"]
     list_print(stringify_plist())
@@ -85,7 +89,6 @@ def recv_cmd(sockfd: socket.socket):
   while True:
     rmsg = ""
     msgs = []
-
     if(connected == False):
       break
 
@@ -108,12 +111,19 @@ def do_Join():
   global sockfd, connected
 
   if(connected):
-    console_print("[ERROR] Already Connected to Server.")
+    console_print("[ERROR] Already connected to Server.")
     return
 
-  sockfd = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-  sockfd.connect( (SERVER, SERVER_PORT) )
-  connected = True
+  try:
+    sockfd = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+
+    sockfd.settimeout(2)
+    sockfd.connect( (SERVER, SERVER_PORT) )
+    sockfd.settimeout(None)
+    
+    connected = True
+  except:
+    console_print("[ERROR] Timout connecting to Server.")
 
   cmd = {
     "CMD": "JOIN", 
@@ -127,11 +137,32 @@ def do_Join():
 
 
 def do_Send():
-  msg_to = get_tolist()
-  msg_to_un = [] if len(msg_to) == 0 else msg_to.split(", ")
-  msg_to_uid = list(map(uid_from_un, msg_to_un))
-  msg_msg = get_sendmsg()
+  if(not connected):
+    console_print("[ERROR] Connect to the server first before sending messages.")
+    return
 
+  msg_to = get_tolist()
+  if(len(msg_to) == 0):
+    console_print("[ERROR] Enter a list of ', ' separated recipients or enter 'ALL' for broadcast messages")
+    return
+  
+  msg_msg = get_sendmsg()
+  if(len(msg_msg) == 0):
+    console_print("[ERROR] Message content cannot be empty.")
+    return
+    
+  msg_to_un = [] if (msg_to == "ALL") else msg_to.split(", ")
+  msg_to_uid = list(map(uid_from_un, msg_to_un))
+  
+  for uid in msg_to_uid:
+    if(uid == USERID):
+      console_print("[ERROR] Cannot send a message to self.")
+      return
+    
+    if(uid == None):
+      console_print("[ERROR] Invalid Nickname(s).")
+      return
+    
   cmd = {
     "CMD": "SEND", 
     "MSG": msg_msg.strip(),
@@ -140,6 +171,9 @@ def do_Send():
   }
   data = json.dumps(cmd).encode('utf-8')
   sockfd.sendall(data)
+
+  print_msg_to = 'ALL' if len(msg_to_un) == 0 else ", ".join(msg_to_un)
+  chat_print(f'[To: {print_msg_to}] {msg_msg.strip()}')
 
 def do_Leave():
   global connected
