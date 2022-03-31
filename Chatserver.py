@@ -14,7 +14,6 @@ import json
 
 class ChatServer:
 	def __init__(self, port):
-		self.CList = []
 		self.RList = []
 		self.port = port
 
@@ -34,7 +33,8 @@ class ChatServer:
 			"CMD": "LIST", 
 			"DATA": self._peer_list()
 		}
-		res = json.dumps(list_data).encode('utf-8')
+		data = json.dumps(list_data) + "\d"
+		res = data.encode('utf-8')
 		
 		for _, p in self.PList.values():
 			if(p != self.sockfd):
@@ -46,12 +46,11 @@ class ChatServer:
 		p_un = msg["UN"]
 
 		if p_uid in self.PList.keys():
-			print(self.PList)
-			psoc.sendall('{"CMD": "ACK", "TYPE": "FAIL"}'.encode('utf-8'))
+			psoc.sendall('{"CMD": "ACK", "TYPE": "FAIL"}\d'.encode('utf-8'))
 		else:
 			self.PList[p_uid] = (p_un, psoc)
 
-			psoc.sendall('{"CMD": "ACK", "TYPE": "OKAY"}'.encode('utf-8'))
+			psoc.sendall('{"CMD": "ACK", "TYPE": "OKAY"}\d'.encode('utf-8'))
 
 
 			self.__send_plist_toall()
@@ -66,7 +65,9 @@ class ChatServer:
 				"MSG": msg["MSG"],
 				"FROM": msg["FROM"]
 			}
-			res = json.dumps(msg_data).encode('utf-8')
+
+			data = json.dumps(msg_data) + "\d"
+			res = data.encode('utf-8')
 
 			for _, p in self.PList.values():
 				if(p != self.sockfd and p != psoc):
@@ -78,7 +79,9 @@ class ChatServer:
 				"MSG": msg["MSG"],
 				"FROM": msg["FROM"]
 			}
-			res = json.dumps(msg_data).encode('utf-8')
+
+			data = json.dumps(msg_data) + "\d"
+			res = data.encode('utf-8')
 
 			for p_uid in msg_to:
 				p = self.PList[p_uid][1]
@@ -128,7 +131,6 @@ class ChatServer:
 						newfd, caddr = self.sockfd.accept()
 						print("A new client has arrived. It is at:", caddr)
 						self.RList.append(newfd)
-						self.CList.append(newfd)
 					else:
 						rmsg = sd.recv(1024)
 
@@ -146,7 +148,6 @@ class ChatServer:
 								self.__send_plist_toall()
 
 							
-							self.CList.remove(sd)
 							self.RList.remove(sd)
 
 			else:

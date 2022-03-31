@@ -33,8 +33,9 @@ SERVER_PORT = None
 # Functions to handle user input
 #
 
-sockfd = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 peer_list = []
+sockfd = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+connected = False
 
 def search_plist(field, value):
   for p in peer_list:
@@ -51,15 +52,22 @@ def stringify_plist():
   s_plist = map(lambda p: f'{p["UN"]} ({p["UID"]})', peer_list)
   return ", ".join(s_plist)
 
-def handle_rmsg(rmsg: string):
+def handle_rmsg(msg: string):
   global peer_list
-  msg = json.loads(rmsg)
+  msg_cmd = msg["CMD"]
 
-  if(msg["CMD"] == "LIST"):
+
+  if(msg_cmd == "ACK"):
+    msg_type = msg["TYPE"]
+    if(msg_type == "OKAY"):
+      console_print(f'[SUCCESS] Successfully connected to server at: ({SERVER}:{SERVER_PORT})')
+    else:
+      console_print(f'[ERROR]: Failed connected to server at: ({SERVER}:{SERVER_PORT}). You might be already connected!')
+  elif(msg_cmd == "LIST"):
     peer_list = msg["DATA"]
     list_print(stringify_plist())
 
-  elif(msg["CMD"] == "MSG"):
+  elif(msg_cmd == "MSG"):
     msg_from = search_plist("UID", msg["FROM"])
     msg_from_un = msg_from["UN"]
     msg_type = msg["TYPE"]
@@ -76,18 +84,36 @@ def handle_rmsg(rmsg: string):
 def recv_cmd(sockfd: socket.socket):
   while True:
     rmsg = ""
+    msgs = []
+
+    if(connected == False):
+      break
 
     try:
       rmsg = sockfd.recv(1024)
     except:
       break
 
-    handle_rmsg(rmsg)
+    if (rmsg):
+      msgs = rmsg.decode('utf-8').split("\d")
+      for msg in msgs:
+        try:
+          msg = json.loads(msg)
+          _ = msg["CMD"]
+          handle_rmsg(msg)
+        except:
+          pass
 
 def do_Join():
-  print( (SERVER, SERVER_PORT))
+  global sockfd, connected
+
+  if(connected):
+    console_print("[ERROR] Already Connected to Server.")
+    return
+
   sockfd = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
   sockfd.connect( (SERVER, SERVER_PORT) )
+  connected = True
 
   cmd = {
     "CMD": "JOIN", 
@@ -97,14 +123,7 @@ def do_Join():
   data = json.dumps(cmd).encode('utf-8')
   sockfd.sendall(data)
 
-  rmsg = sockfd.recv(1024)
-  msg = json.loads(rmsg)
-
-  if(msg["CMD"] == "ACK" and msg["TYPE"] == "OKAY"):
-    console_print(f'successfully connected to server at: ({Server}:{SERVER_PORT})')
-    start_new_thread(recv_cmd, (sockfd, ))
-  else:
-    console_print(f'[ ERROR ]: failed connected to server at: ({Server}:{SERVER_PORT})')
+  start_new_thread(recv_cmd, (sockfd, ))
 
 
 def do_Send():
@@ -123,7 +142,11 @@ def do_Send():
   sockfd.sendall(data)
 
 def do_Leave():
+  global connected
+
   sockfd.close()
+  connected = False
+  console_print('[EXIT] Successfully left the Chat')
 
 
 #################################################################################
