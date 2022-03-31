@@ -29,11 +29,24 @@ class ChatServer:
 
 		return plist
 
+	def __send_plist_toall(self):
+		list_data = {
+			"CMD": "LIST", 
+			"DATA": self._peer_list()
+		}
+		res = json.dumps(list_data).encode('utf-8')
+		
+		for _, p in self.PList.values():
+			if(p != self.sockfd):
+				p.sendall(res)
+
+
 	def __do_JOIN(self, msg, psoc):
 		p_uid = msg["UID"]
 		p_un = msg["UN"]
 
 		if p_uid in self.PList.keys():
+			print(self.PList)
 			psoc.sendall('{"CMD": "ACK", "TYPE": "FAIL"}'.encode('utf-8'))
 		else:
 			self.PList[p_uid] = (p_un, psoc)
@@ -41,15 +54,7 @@ class ChatServer:
 			psoc.sendall('{"CMD": "ACK", "TYPE": "OKAY"}'.encode('utf-8'))
 
 
-			list_data = {
-				"CMD": "LIST", 
-				"DATA": self._peer_list()
-			}
-			res = json.dumps(list_data).encode('utf-8')
-			
-			for _, p in self.PList.values():
-				if(p != self.sockfd):
-					p.sendall(res)
+			self.__send_plist_toall()
 
 	def __do_SEND(self, msg, psoc):
 		msg_to =  msg["TO"]
@@ -131,7 +136,15 @@ class ChatServer:
 							self.__handle_rmsg(rmsg, sd)
 
 						else:
-							print("A client connection is broken!!")
+							broken_uid = ""
+							for k, v in self.PList.items():
+								if(v[1] == sd):
+									broken_uid = k
+							
+							if(broken_uid):
+								del self.PList[broken_uid]
+								self.__send_plist_toall()
+
 							
 							self.CList.remove(sd)
 							self.RList.remove(sd)

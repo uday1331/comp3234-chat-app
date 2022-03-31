@@ -75,14 +75,18 @@ def handle_rmsg(rmsg: string):
 
 def recv_cmd(sockfd: socket.socket):
   while True:
-    rmsg = sockfd.recv(1024)
-    if not rmsg:
-      console(f'none response from server. successfully disconnected')
+    rmsg = ""
+
+    try:
+      rmsg = sockfd.recv(1024)
+    except:
       break
+
     handle_rmsg(rmsg)
-  sockfd.close()
 
 def do_Join():
+  print( (SERVER, SERVER_PORT))
+  sockfd = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
   sockfd.connect( (SERVER, SERVER_PORT) )
 
   cmd = {
@@ -101,13 +105,9 @@ def do_Join():
     start_new_thread(recv_cmd, (sockfd, ))
   else:
     console_print(f'[ ERROR ]: failed connected to server at: ({Server}:{SERVER_PORT})')
-    sockfd.close()
 
 
 def do_Send():
-  #The following statements are just for demo purpose
-  #Remove them when you implement the function
-
   msg_to = get_tolist()
   msg_to_un = [] if len(msg_to) == 0 else msg_to.split(", ")
   msg_to_uid = list(map(uid_from_un, msg_to_un))
@@ -122,14 +122,8 @@ def do_Send():
   data = json.dumps(cmd).encode('utf-8')
   sockfd.sendall(data)
 
-
-
-  ## TODO: convert nicknames to uid
-
 def do_Leave():
-  #The following statement is just for demo purpose
-  #Remove it when you implement the function
-  list_print("Press do_Leave()")
+  sockfd.close()
 
 
 #################################################################################
