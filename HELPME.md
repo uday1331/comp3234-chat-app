@@ -1,4 +1,6 @@
-1. Commands are sent as messages which you can see in server line 71
-2. Code the join process first look at chatapp.py
+1. Test everything
+2. Re-read requirements
 
-How tf does select work
+3. Finish and submit this project
+4. CHIN9501
+5. LOQNFT
